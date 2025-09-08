@@ -5,26 +5,22 @@ import (
 	"sync"
 	"time"
 
+	"orderpulse-api/internal/logstore"
 	"orderpulse-api/internal/models"
 )
 
 type Subscriber chan models.OrderEvent
 
 type Hub struct {
-	mu      sync.RWMutex
-	subs    map[Subscriber]struct{}
-	hmu     sync.RWMutex
-	hist    []models.OrderEvent
-	histMax int
-	histTTL time.Duration
+	mu    sync.RWMutex
+	subs  map[Subscriber]struct{}
+	store logstore.Store
 }
 
-func NewHub() *Hub {
+func NewHub(store logstore.Store) *Hub {
 	return &Hub{
-		subs:    make(map[Subscriber]struct{}),
-		hist:    make([]models.OrderEvent, 0, 5000),
-		histMax: 5000,
-		histTTL: time.Hour,
+		subs:  make(map[Subscriber]struct{}),
+		store: store,
 	}
 }
 
@@ -54,31 +50,20 @@ func (h *Hub) Publish(ev models.OrderEvent) {
 	}
 	h.mu.RUnlock()
 
-	h.hmu.Lock()
-	cut := time.Now().Add(-h.histTTL)
-	h.hist = append(h.hist, ev)
-
-	if len(h.hist) > h.histMax {
-		h.hist = h.hist[len(h.hist)-h.histMax:]
+	if h.store != nil {
+		_ = h.store.Append(ev)
 	}
-	i := 0
-	for ; i < len(h.hist) && h.hist[i].TS.Before(cut); i++ {
-	}
-	if i > 0 && i < len(h.hist) {
-		h.hist = h.hist[i:]
-	}
-	h.hmu.Unlock()
 }
 
 func (h *Hub) ReplaySince(since time.Time, out Subscriber) {
-	h.hmu.RLock()
-	defer h.hmu.RUnlock()
-	for _, ev := range h.hist {
-		if ev.TS.After(since) {
-			select {
-			case out <- ev:
-			default:
-			}
-		}
+	if h.store == nil {
+		return
 	}
+	_ = h.store.ReplaySince(since, func(ev models.OrderEvent) bool {
+		select {
+		case out <- ev:
+		default:
+		}
+		return true
+	})
 }

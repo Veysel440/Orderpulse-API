@@ -2,15 +2,17 @@ package httpx
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 	"time"
+
+	"orderpulse-api/pkg/jwt"
 
 	"github.com/go-chi/httprate"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
-	"orderpulse-api/pkg/jwt"
 )
 
 type ctxKey string
@@ -137,6 +139,26 @@ func Auth(optional bool, v *jwt.Validator) func(http.Handler) http.Handler {
 				if sub != "" {
 					r = r.WithContext(context.WithValue(r.Context(), CtxSub, sub))
 				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func BasicAuth(user, pass string) func(http.Handler) http.Handler {
+	enabled := user != "" && pass != ""
+	return func(next http.Handler) http.Handler {
+		if !enabled {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, p, ok := r.BasicAuth()
+			if !ok ||
+				subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 ||
+				subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
+				w.Header().Set("WWW-Authenticate", `Basic realm="metrics"`)
+				WriteError(w, http.StatusUnauthorized, "unauthorized", "basic auth required")
+				return
 			}
 			next.ServeHTTP(w, r)
 		})
