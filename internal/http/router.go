@@ -17,14 +17,16 @@ import (
 func Router(cfg *config.Config, hub *stream.Hub) http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(Recoverer)
 	r.Use(RequestID)
 	r.Use(SecureHeaders)
 	r.Use(Logger)
 	r.Use(Rate(300, time.Minute))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: cfg.AllowedOrigins,
-		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders: []string{"Authorization", "Content-Type"},
+		AllowedOrigins:   cfg.AllowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowCredentials: false,
 	}))
 
 	val := jwt.NewValidator(cfg.JWTSecret)
@@ -36,12 +38,14 @@ func Router(cfg *config.Config, hub *stream.Hub) http.Handler {
 	r.Group(func(g chi.Router) {
 		g.Use(Auth(false, val))
 		g.Get("/api/stream/events", stream.SSE(hub))
-		g.Get("/api/ws", WS(cfg.AllowedOrigins, hub))
 	})
+
+	r.Get("/api/ws", WS(cfg.AllowedOrigins, hub, val))
 
 	r.Group(func(g chi.Router) {
 		g.Use(Auth(true, val))
 		g.Use(BodyLimit(64 << 10))
+		g.Use(Rate(60, time.Minute))
 		g.Post("/api/telemetry", telemetry.Handle)
 	})
 

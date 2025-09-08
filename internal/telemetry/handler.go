@@ -8,7 +8,7 @@ import (
 )
 
 type Payload struct {
-	Type    string            `json:"type"` // error|metric
+	Type    string            `json:"type"`
 	Message string            `json:"message"`
 	Tags    map[string]string `json:"tags"`
 	TS      time.Time         `json:"ts"`
@@ -26,10 +26,10 @@ func Handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	p.Message = mask(p.Message)
 	if p.Tags == nil {
 		p.Tags = map[string]string{}
 	}
+	p.Message = mask(p.Message)
 	for k, v := range p.Tags {
 		p.Tags[k] = mask(v)
 	}
