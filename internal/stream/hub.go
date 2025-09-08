@@ -33,6 +33,7 @@ func (h *Hub) Subscribe(ctx context.Context, buf int) Subscriber {
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
 	h.mu.Unlock()
+
 	go func() {
 		<-ctx.Done()
 		h.mu.Lock()
@@ -56,6 +57,7 @@ func (h *Hub) Publish(ev models.OrderEvent) {
 	h.hmu.Lock()
 	cut := time.Now().Add(-h.histTTL)
 	h.hist = append(h.hist, ev)
+
 	if len(h.hist) > h.histMax {
 		h.hist = h.hist[len(h.hist)-h.histMax:]
 	}

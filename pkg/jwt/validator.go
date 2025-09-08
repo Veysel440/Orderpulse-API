@@ -11,10 +11,10 @@ type Validator struct{ secret string }
 func NewValidator(secret string) *Validator { return &Validator{secret: secret} }
 
 func (v *Validator) Validate(token string) (string, error) {
+	if token == "" {
+		return "", errors.New("no token")
+	}
 	if v.secret == "" {
-		if token == "" {
-			return "", errors.New("no token")
-		}
 		return "anon", nil
 	}
 	tok, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
