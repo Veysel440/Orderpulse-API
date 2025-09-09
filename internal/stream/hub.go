@@ -18,10 +18,7 @@ type Hub struct {
 }
 
 func NewHub(store logstore.Store) *Hub {
-	return &Hub{
-		subs:  make(map[Subscriber]struct{}),
-		store: store,
-	}
+	return &Hub{subs: make(map[Subscriber]struct{}), store: store}
 }
 
 func (h *Hub) Subscribe(ctx context.Context, buf int) Subscriber {
@@ -29,6 +26,7 @@ func (h *Hub) Subscribe(ctx context.Context, buf int) Subscriber {
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
 	h.mu.Unlock()
+	subsGauge.Inc()
 
 	go func() {
 		<-ctx.Done()
@@ -36,6 +34,7 @@ func (h *Hub) Subscribe(ctx context.Context, buf int) Subscriber {
 		delete(h.subs, ch)
 		close(ch)
 		h.mu.Unlock()
+		subsGauge.Dec()
 	}()
 	return ch
 }
@@ -46,10 +45,10 @@ func (h *Hub) Publish(ev models.OrderEvent) {
 		select {
 		case ch <- ev:
 		default:
+			dropsCtr.Inc()
 		}
 	}
 	h.mu.RUnlock()
-
 	if h.store != nil {
 		_ = h.store.Append(ev)
 	}
@@ -63,6 +62,7 @@ func (h *Hub) ReplaySince(since time.Time, out Subscriber) {
 		select {
 		case out <- ev:
 		default:
+			dropsCtr.Inc()
 		}
 		return true
 	})
